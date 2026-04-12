@@ -3,16 +3,38 @@
     {
       "id": "q1",
       "hop_count": 2,
-      "question": "REPLACE: A 2-hop question that requires connecting two facts across documents.",
-      "ground_truth": "REPLACE: The full, correct answer that covers both reasoning hops.",
-      "metadata": { "topic": "example", "difficulty": "medium" }
+      "question": "What is the default message serializer used by Celery since version 4.0, and what configuration setting must you change to restrict workers to only accept that serializer format?",
+      "ground_truth": "Since Celery 4.0 the default serializer is JSON (previously pickle). To restrict workers to only accept JSON-serialized messages you must set the 'accept_content' configuration option to ['json'] (e.g. app.conf.accept_content = ['json']). This prevents deserialization of untrusted pickle, yaml, or msgpack payloads and is the recommended security hardening step described in the Celery security documentation."
     },
     {
       "id": "q2",
+      "hop_count": 2,
+      "question": "Which versions of Django are supported by Celery 5.x, and what is the minimum Python version required to run Celery 5?",
+      "ground_truth": "Celery 5.x requires Django 2.2 or higher (LTS releases 2.2, 3.2, 4.2 and the current stable release are actively tested). The minimum Python version for Celery 5 is Python 3.8. Both requirements are documented in the 'First steps with Django' and the 'Getting started' installation guides."
+    },
+    {
+      "id": "q3",
+      "hop_count": 2,
+      "question": "When should you choose Redis over RabbitMQ as a Celery broker, and what is the key limitation of Redis as a broker compared to RabbitMQ?",
+      "ground_truth": "Redis is a good broker choice for small, fast messages and when you need a lightweight setup without a separate messaging server — it also doubles as a result backend. However Redis does not support advanced routing (topic/fanout exchanges), does not persist messages to disk by default (messages can be lost on crash unless persistence is configured), and does not support message acknowledgement with the same reliability guarantees as RabbitMQ. RabbitMQ is preferred when you need durable queuing, complex routing topologies, or strict at-least-once delivery guarantees."
+    },
+    {
+      "id": "q4",
       "hop_count": 3,
-      "question": "REPLACE: A 3-hop question that chains three facts from different documents.",
-      "ground_truth": "REPLACE: The full, correct answer that covers all three reasoning hops.",
-      "metadata": { "topic": "example", "difficulty": "hard" }
+      "question": "How does a Celery worker process an ETA (estimated time of arrival) task — which internal component holds the task until its ETA arrives, what happens when the ETA passes, and how does using the Eventlet concurrency pool affect ETA task handling?",
+      "ground_truth": "When a worker receives a task with an ETA in the future it is held in the worker's in-memory timer (the 'eta_scheduler' / ETA timer inside the consumer). The task is not executed immediately; instead the timer fires when the ETA passes and moves the task into the execution pool for processing. If the Eventlet concurrency pool is used, rate-limiting and ETA scheduling rely on Eventlet's non-blocking sleep, which means the worker must not be killed between receipt and the ETA — there is no persistent ETA queue, so a worker restart loses pending ETA tasks unless they are re-delivered by the broker."
+    },
+    {
+      "id": "q5",
+      "hop_count": 3,
+      "question": "What are the three things you need to set up message signing in Celery, what serializer must be used when signing is enabled, and which Python library provides the underlying cryptographic operations?",
+      "ground_truth": "To enable message signing in Celery you need: (1) set the task_serializer and accept_content to 'auth' — the special authentication serializer; (2) configure the signing certificate and private key via CELERY_SECURITY_KEY, CELERY_SECURITY_CERTIFICATE, and CELERY_SECURITY_CERT_STORE; (3) call app.setup_security() to activate the security module. The 'auth' serializer handles signing and verification. The underlying cryptographic operations (RSA signing, X.509 certificates) are provided by the 'cryptography' Python library, which must be installed separately."
+    },
+    {
+      "id": "q6",
+      "hop_count": 3,
+      "question": "How do you route a specific Celery task to a named queue, what command-line option tells a worker to consume from that queue, and what is the name of the default queue Celery uses when no routing is configured?",
+      "ground_truth": "To route a task to a named queue you define a task_routes mapping in your Celery configuration, e.g. app.conf.task_routes = {'myapp.tasks.feed_import': {'queue': 'feeds'}}. To make a worker consume from that queue you start it with the -Q flag: 'celery -A proj worker -Q feeds'. If no routing is configured all tasks go to the default queue, which is named 'celery' — this name is preserved for historical backwards-compatibility reasons and can be changed via the task_default_queue setting."
     }
   ]
 }
