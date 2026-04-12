@@ -57,6 +57,7 @@ def save_results(
             "question": qr.question,
             "ground_truth": q.get("ground_truth", ""),
             "answer": qr.answer,
+            "answer_len": len(qr.answer.split()) if qr.answer else 0,
             "latency_s": qr.latency_s,
             "query_error": qr.error,
             "faithfulness": sc.faithfulness if sc else "",
@@ -79,16 +80,37 @@ def save_results(
 
     # ── JSON ─────────────────────────────────────────────────────────────────
     with open(json_path, "w", encoding="utf-8") as f:
+        if cfg.backend == "openai":
+            cfg_summary = {
+                "backend": cfg.backend,
+                "llm_model": cfg.openai_llm_model,
+                "embedding_model": cfg.openai_embed_model,
+                "judge_model": cfg.effective_judge_model(),
+            }
+        elif cfg.backend == "gemini":
+            cfg_summary = {
+                "backend": cfg.backend,
+                "llm_model": cfg.gemini_llm_model,
+                "embedding_model": cfg.gemini_embed_model,
+                "judge_model": cfg.effective_judge_model(),
+            }
+        else:
+            cfg_summary = {
+                "backend": cfg.backend,
+                "llm_model": cfg.llm_model,
+                "embedding_model": cfg.embedding_model,
+                "judge_model": cfg.effective_judge_model(),
+            }
+        cfg_summary.update({
+            "chunk_token_size": cfg.chunk_token_size,
+            "modes": cfg.modes,
+            "top_k": cfg.top_k,
+        })
+
         json.dump(
             {
                 "timestamp": ts,
-                "config": {
-                    "llm_model": cfg.llm_model,
-                    "embedding_model": cfg.embedding_model,
-                    "judge_model": cfg.judge_model,
-                    "modes": cfg.modes,
-                    "top_k": cfg.top_k,
-                },
+                "config": cfg_summary,
                 "results": rows,
             },
             f,

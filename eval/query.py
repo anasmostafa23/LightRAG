@@ -36,6 +36,7 @@ async def _query_one(
         top_k=cfg.top_k,
         chunk_top_k=cfg.chunk_top_k,
         stream=False,
+        enable_rerank=False,
     )
     t0 = time.perf_counter()
     try:
