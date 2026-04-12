@@ -149,19 +149,24 @@ async def _score_ollama(
             pass
 
 
-# ── Gemini judge (via OpenAI-compat endpoint) ─────────────────────────────────
+# ── OpenAI / Gemini judge (shared — both use the OpenAI client interface) ──────
+# Gemini exposes an OpenAI-compatible endpoint, so one function covers both.
 
-async def _score_gemini(
+_BACKEND_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+}
+
+async def _score_api(
     result: QueryResult,
     ground_truth: str,
     cfg: EvalConfig,
 ) -> Score:
     from openai import AsyncOpenAI
 
-    # Gemini exposes an OpenAI-compatible chat endpoint
     client = AsyncOpenAI(
-        api_key=cfg.gemini_api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=cfg.effective_api_key(),
+        base_url=_BACKEND_BASE_URLS[cfg.backend],
     )
     try:
         response = await client.chat.completions.create(
@@ -190,8 +195,8 @@ async def _score_one(
     if not result.answer.strip():
         return _error_score(result.question_id, result.mode, "empty_answer")
 
-    if cfg.backend == "gemini":
-        return await _score_gemini(result, ground_truth, cfg)
+    if cfg.backend in ("openai", "gemini"):
+        return await _score_api(result, ground_truth, cfg)
     return await _score_ollama(result, ground_truth, cfg)
 
 

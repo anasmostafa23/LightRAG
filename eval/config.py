@@ -1,9 +1,10 @@
 """
 Evaluation pipeline configuration.
 
-Two backends are supported:
-  "ollama"  — everything runs locally via Ollama (original local setup)
-  "gemini"  — Google Gemini API (free tier, works on Colab CPU, no GPU needed)
+Three backends are supported:
+  "ollama"  — everything runs locally via Ollama
+  "openai"  — OpenAI API (gpt-4o-mini + text-embedding-3-small)
+  "gemini"  — Google Gemini API (free tier, gemini-2.0-flash)
 
 Edit the values below or override any field via EVAL_* environment variables.
 """
@@ -17,8 +18,9 @@ from typing import Literal
 class EvalConfig:
     # ── Backend selection ──────────────────────────────────────────────────
     # "ollama"  → local Ollama server
-    # "gemini"  → Google Gemini API (get a free key at aistudio.google.com)
-    backend: Literal["ollama", "gemini"] = "ollama"
+    # "openai"  → OpenAI API  (set OPENAI_API_KEY)
+    # "gemini"  → Google Gemini API (set GEMINI_API_KEY, free tier)
+    backend: Literal["ollama", "openai", "gemini"] = "openai"
 
     # ── Paths ──────────────────────────────────────────────────────────────
     working_dir: str = "./eval/rag_storage"   # LightRAG index lives here
@@ -26,24 +28,28 @@ class EvalConfig:
     questions_file: str = "./eval/questions.json"
     results_dir: str = "./eval/results"
 
-    # ── Ollama settings (used when backend="ollama") ────────────────────────
+    # ── Ollama settings (used when backend="ollama") ───────────────────────
     ollama_host: str = "http://localhost:11434"
-    llm_model: str = "qwen2.5:14b"            # Needs ≥ 32k context
-    embedding_model: str = "bge-m3:latest"    # Must stay consistent after indexing
-    embedding_dim: int = 1024                  # bge-m3 output dim
+    llm_model: str = "qwen2.5:14b"
+    embedding_model: str = "bge-m3:latest"
+    embedding_dim: int = 1024
+
+    # ── OpenAI settings (used when backend="openai") ───────────────────────
+    openai_api_key: str = ""                   # or set OPENAI_API_KEY env var
+    openai_llm_model: str = "gpt-4o-mini"      # cheap + capable; swap to gpt-4o for best quality
+    openai_embed_model: str = "text-embedding-3-small"
+    openai_embed_dim: int = 1536               # text-embedding-3-small native dim
 
     # ── Gemini settings (used when backend="gemini") ───────────────────────
-    # Free key at: https://aistudio.google.com/app/apikey
     gemini_api_key: str = ""                   # or set GEMINI_API_KEY env var
     gemini_llm_model: str = "gemini-2.0-flash"
     gemini_embed_model: str = "models/text-embedding-004"
-    gemini_embed_dim: int = 768                # text-embedding-004 output dim
+    gemini_embed_dim: int = 768
 
     # ── Judge LLM ──────────────────────────────────────────────────────────
-    # Uses the same backend as above.
-    # Ollama:  judge_model is an Ollama model name (can differ from llm_model)
-    # Gemini:  judge_model is a Gemini model name
-    judge_model: str = "qwen2.5:14b"          # overridden automatically for gemini
+    # Defaults to the same model as the backend LLM.
+    # Override with EVAL_JUDGE_MODEL to use a smarter/cheaper model for judging.
+    judge_model: str = ""   # empty = auto-select based on backend
 
     # ── Query settings ─────────────────────────────────────────────────────
     modes: list = field(
@@ -57,13 +63,22 @@ class EvalConfig:
     force_reindex: bool = False    # True = wipe + rebuild from corpus
     max_parallel_insert: int = 2
 
-    def effective_embedding_dim(self) -> int:
-        return self.gemini_embed_dim if self.backend == "gemini" else self.embedding_dim
-
     def effective_judge_model(self) -> str:
-        if self.backend == "gemini" and self.judge_model == "qwen2.5:14b":
-            return self.gemini_llm_model   # default for gemini
-        return self.judge_model
+        if self.judge_model:
+            return self.judge_model
+        return {
+            "openai": self.openai_llm_model,
+            "gemini": self.gemini_llm_model,
+            "ollama": self.llm_model,
+        }[self.backend]
+
+    def effective_api_key(self) -> str:
+        """Return the API key for the active backend."""
+        if self.backend == "openai":
+            return self.openai_api_key or os.getenv("OPENAI_API_KEY", "")
+        if self.backend == "gemini":
+            return self.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+        return ""
 
 
 def load_config() -> EvalConfig:
@@ -80,6 +95,10 @@ def load_config() -> EvalConfig:
         "llm_model":            "EVAL_LLM_MODEL",
         "embedding_model":      "EVAL_EMBEDDING_MODEL",
         "embedding_dim":        "EVAL_EMBEDDING_DIM",
+        "openai_api_key":       "OPENAI_API_KEY",
+        "openai_llm_model":     "EVAL_OPENAI_LLM_MODEL",
+        "openai_embed_model":   "EVAL_OPENAI_EMBED_MODEL",
+        "openai_embed_dim":     "EVAL_OPENAI_EMBED_DIM",
         "gemini_api_key":       "GEMINI_API_KEY",
         "gemini_llm_model":     "EVAL_GEMINI_LLM_MODEL",
         "gemini_embed_model":   "EVAL_GEMINI_EMBED_MODEL",
@@ -93,8 +112,8 @@ def load_config() -> EvalConfig:
     }
 
     int_fields = {
-        "embedding_dim", "gemini_embed_dim", "top_k",
-        "chunk_top_k", "max_parallel_insert",
+        "embedding_dim", "openai_embed_dim", "gemini_embed_dim",
+        "top_k", "chunk_top_k", "max_parallel_insert",
     }
     bool_fields = {"skip_ingestion", "force_reindex"}
 

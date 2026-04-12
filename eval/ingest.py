@@ -41,6 +41,48 @@ def _build_rag_ollama(cfg: EvalConfig) -> LightRAG:
     )
 
 
+# ── Backend: OpenAI ──────────────────────────────────────────────────────────
+
+def _build_rag_openai(cfg: EvalConfig) -> LightRAG:
+    from functools import partial
+    from lightrag.llm.openai import openai_complete_if_cache, openai_embed
+
+    api_key = cfg.effective_api_key()
+    if not api_key:
+        raise ValueError(
+            "OpenAI API key is required. Set OPENAI_API_KEY environment variable "
+            "or cfg.openai_api_key."
+        )
+
+    llm_model = cfg.openai_llm_model
+    embed_model = cfg.openai_embed_model
+
+    async def llm_func(prompt, system_prompt=None, history_messages=[], **kwargs):
+        return await openai_complete_if_cache(
+            llm_model,
+            prompt,
+            system_prompt=system_prompt,
+            history_messages=history_messages,
+            api_key=api_key,
+            **kwargs,
+        )
+
+    return LightRAG(
+        working_dir=cfg.working_dir,
+        llm_model_func=llm_func,
+        embedding_func=EmbeddingFunc(
+            embedding_dim=cfg.openai_embed_dim,
+            max_token_size=8192,
+            func=partial(
+                openai_embed.func,
+                model=embed_model,
+                api_key=api_key,
+            ),
+        ),
+        max_parallel_insert=cfg.max_parallel_insert,
+    )
+
+
 # ── Backend: Gemini ───────────────────────────────────────────────────────────
 
 def _build_rag_gemini(cfg: EvalConfig) -> LightRAG:
@@ -86,6 +128,8 @@ def _build_rag_gemini(cfg: EvalConfig) -> LightRAG:
 # ── Routing ───────────────────────────────────────────────────────────────────
 
 def _build_rag(cfg: EvalConfig) -> LightRAG:
+    if cfg.backend == "openai":
+        return _build_rag_openai(cfg)
     if cfg.backend == "gemini":
         return _build_rag_gemini(cfg)
     return _build_rag_ollama(cfg)
