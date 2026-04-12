@@ -72,36 +72,49 @@ def _load_questions(path: str) -> list[dict]:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-async def run(cfg: EvalConfig, no_judge: bool = False) -> None:
+async def run(cfg: EvalConfig, no_judge: bool = False) -> list:
+    """
+    Run one experiment configuration end-to-end.
+    Returns the list of Score objects (empty if no_judge=True).
+    """
+    tag = cfg.experiment_tag()
     questions = _load_questions(cfg.questions_file)
     logger.info(
-        f"Loaded {len(questions)} question(s) | modes: {cfg.modes} | "
-        f"judge: {'disabled' if no_judge else cfg.judge_model}"
+        f"[{tag}] {len(questions)} question(s) | modes: {cfg.modes} | "
+        f"embed: {cfg.openai_embed_model if cfg.backend == 'openai' else ''} | "
+        f"chunk: {cfg.chunk_token_size} tokens"
     )
 
-    # 1. Ingest documents (or reuse existing index)
+    # 1. Each experiment uses its own working_dir derived from the tag
+    from pathlib import Path
+    base = Path(cfg.working_dir)
+    cfg.working_dir = str(base.parent / base.name / tag)
+
     rag = await ingest(cfg)
 
     try:
-        # 2. Run queries across all modes
-        logger.info("Running queries …")
+        # 2. Query all modes
+        logger.info(f"[{tag}] Running queries …")
         query_results = await run_queries(rag, questions, cfg)
 
-        # 3. Score answers (optional)
+        # 3. Score
         if no_judge:
             scores = []
-            logger.info("Skipping judge scoring (--no-judge).")
+            logger.info(f"[{tag}] Skipping judge scoring (--no-judge).")
         else:
-            logger.info("Scoring answers with judge model …")
+            logger.info(f"[{tag}] Scoring answers …")
             scores = await score_all(query_results, questions, cfg)
 
-        # 4. Save results
-        csv_path, json_path = save_results(query_results, scores, questions, cfg)
-        logger.info(f"Results saved:\n  CSV  → {csv_path}\n  JSON → {json_path}")
+        # 4. Save
+        csv_path, json_path = save_results(
+            query_results, scores, questions, cfg, experiment_tag=tag
+        )
+        logger.info(f"[{tag}] Results saved:\n  CSV  → {csv_path}\n  JSON → {json_path}")
 
-        # 5. Print summary table
         if scores:
             print_summary(scores, cfg.modes)
+
+        return scores
 
     finally:
         await rag.finalize_storages()

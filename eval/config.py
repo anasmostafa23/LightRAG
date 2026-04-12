@@ -51,6 +51,10 @@ class EvalConfig:
     # Override with EVAL_JUDGE_MODEL to use a smarter/cheaper model for judging.
     judge_model: str = ""   # empty = auto-select based on backend
 
+    # ── Chunking (experiment variables) ────────────────────────────────────
+    chunk_token_size: int = 1200          # tokens per chunk (default LightRAG value)
+    chunk_overlap_token_size: int = 100   # overlap between consecutive chunks
+
     # ── Query settings ─────────────────────────────────────────────────────
     modes: list = field(
         default_factory=lambda: ["naive", "local", "global", "hybrid", "mix"]
@@ -62,6 +66,17 @@ class EvalConfig:
     skip_ingestion: bool = False   # True = reuse existing index
     force_reindex: bool = False    # True = wipe + rebuild from corpus
     max_parallel_insert: int = 2
+
+    def experiment_tag(self) -> str:
+        """Short slug that uniquely identifies an (embed_model, chunk_size) combo.
+        Used as the working_dir suffix so each experiment has its own isolated index."""
+        if self.backend == "openai":
+            model_slug = self.openai_embed_model.replace("/", "-").replace(".", "-")
+        elif self.backend == "gemini":
+            model_slug = self.gemini_embed_model.split("/")[-1]
+        else:
+            model_slug = self.embedding_model.replace(":", "-").replace("/", "-")
+        return f"{model_slug}__chunk{self.chunk_token_size}"
 
     def effective_judge_model(self) -> str:
         if self.judge_model:

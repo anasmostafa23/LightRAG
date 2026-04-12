@@ -1,7 +1,11 @@
 """
 Document ingestor.
 Reads every .txt and .md file in corpus_dir and inserts them into LightRAG.
-Supports two backends: "ollama" (local) and "gemini" (Google API, free tier).
+Supports three backends: "ollama", "openai", "gemini".
+
+Chunking parameters (chunk_token_size, chunk_overlap_token_size) are experiment
+variables — each unique combination gets its own isolated working_dir so indexes
+never bleed into each other.
 """
 
 import shutil
@@ -15,6 +19,15 @@ from .config import EvalConfig
 
 
 # ── Backend: Ollama ───────────────────────────────────────────────────────────
+
+def _common_kwargs(cfg: EvalConfig) -> dict:
+    """Chunking params shared by every backend."""
+    return {
+        "chunk_token_size": cfg.chunk_token_size,
+        "chunk_overlap_token_size": cfg.chunk_overlap_token_size,
+        "max_parallel_insert": cfg.max_parallel_insert,
+    }
+
 
 def _build_rag_ollama(cfg: EvalConfig) -> LightRAG:
     from lightrag.llm.ollama import ollama_model_complete, ollama_embed
@@ -37,7 +50,7 @@ def _build_rag_ollama(cfg: EvalConfig) -> LightRAG:
                 host=cfg.ollama_host,
             ),
         ),
-        max_parallel_insert=cfg.max_parallel_insert,
+        **_common_kwargs(cfg),
     )
 
 
@@ -79,7 +92,7 @@ def _build_rag_openai(cfg: EvalConfig) -> LightRAG:
                 api_key=api_key,
             ),
         ),
-        max_parallel_insert=cfg.max_parallel_insert,
+        **_common_kwargs(cfg),
     )
 
 
@@ -121,7 +134,7 @@ def _build_rag_gemini(cfg: EvalConfig) -> LightRAG:
         working_dir=cfg.working_dir,
         llm_model_func=llm_func,
         embedding_func=embed_func,
-        max_parallel_insert=cfg.max_parallel_insert,
+        **_common_kwargs(cfg),
     )
 
 

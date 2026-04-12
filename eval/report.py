@@ -23,6 +23,7 @@ def save_results(
     scores: list[Score],
     questions: list[dict],
     cfg: EvalConfig,
+    experiment_tag: str = "",
 ) -> tuple[str, str]:
     """
     Merge query results + scores, write CSV and JSON.
@@ -32,8 +33,9 @@ def save_results(
     results_dir.mkdir(parents=True, exist_ok=True)
 
     ts = _timestamp()
-    csv_path = results_dir / f"results_{ts}.csv"
-    json_path = results_dir / f"results_{ts}.json"
+    tag = f"_{experiment_tag}" if experiment_tag else ""
+    csv_path = results_dir / f"results{tag}_{ts}.csv"
+    json_path = results_dir / f"results{tag}_{ts}.json"
 
     # Build lookup: (question_id, mode) -> Score
     score_map: dict[tuple[str, str], Score] = {
@@ -48,6 +50,7 @@ def save_results(
         sc = score_map.get((qr.question_id, qr.mode))
         q = q_map.get(qr.question_id, {})
         row = {
+            "experiment": experiment_tag,
             "question_id": qr.question_id,
             "hop_count": q.get("hop_count", ""),
             "mode": qr.mode,
