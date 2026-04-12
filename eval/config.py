@@ -60,7 +60,9 @@ class EvalConfig:
         default_factory=lambda: ["naive", "local", "global", "hybrid", "mix"]
     )
     top_k: int = 60
-    chunk_top_k: int = 10
+    chunk_top_k: int = 20          # 10 was too low — caused all modes to converge
+    max_total_tokens: int = 30000  # matches CLAUDE.md recommendation
+    enable_rerank: bool = False     # set True to unlock mix-mode advantage
 
     # ── Pipeline behaviour ─────────────────────────────────────────────────
     skip_ingestion: bool = False   # True = reuse existing index
@@ -79,13 +81,21 @@ class EvalConfig:
         return f"{model_slug}__chunk{self.chunk_token_size}"
 
     def effective_judge_model(self) -> str:
-        if self.judge_model:
+        if self.judge_model and self.judge_model.strip():
             return self.judge_model
-        return {
+        default = {
             "openai": self.openai_llm_model,
             "gemini": self.gemini_llm_model,
             "ollama": self.llm_model,
         }[self.backend]
+        import warnings
+        warnings.warn(
+            f"judge_model is not set — falling back to '{default}'. "
+            "This model is too lenient and produces flat scores. "
+            "Set judge_model='gpt-4o' (or equivalent) explicitly.",
+            stacklevel=2,
+        )
+        return default
 
     def effective_api_key(self) -> str:
         """Return the API key for the active backend."""
@@ -121,6 +131,8 @@ def load_config() -> EvalConfig:
         "judge_model":          "EVAL_JUDGE_MODEL",
         "top_k":                "EVAL_TOP_K",
         "chunk_top_k":          "EVAL_CHUNK_TOP_K",
+        "max_total_tokens":     "EVAL_MAX_TOTAL_TOKENS",
+        "enable_rerank":        "EVAL_ENABLE_RERANK",
         "skip_ingestion":       "EVAL_SKIP_INGESTION",
         "force_reindex":        "EVAL_FORCE_REINDEX",
         "max_parallel_insert":  "EVAL_MAX_PARALLEL_INSERT",
@@ -128,9 +140,9 @@ def load_config() -> EvalConfig:
 
     int_fields = {
         "embedding_dim", "openai_embed_dim", "gemini_embed_dim",
-        "top_k", "chunk_top_k", "max_parallel_insert",
+        "top_k", "chunk_top_k", "max_total_tokens", "max_parallel_insert",
     }
-    bool_fields = {"skip_ingestion", "force_reindex"}
+    bool_fields = {"skip_ingestion", "force_reindex", "enable_rerank"}
 
     for attr, env_var in overrides.items():
         val = os.getenv(env_var)
